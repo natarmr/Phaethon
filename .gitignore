@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env*
+!.env.example
+.reference/
+*.log
+.DS_Store
+.wrangler/
+.dev.vars*
+!.dev.vars.example
+artifacts/
+# Local OSM import workspace (regenerate via tools/osm_fetch.py).
+.venv-osm/
+tools/osm_*.json
+
+__pycache__/

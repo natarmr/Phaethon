@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="64" viewBox="0 0 256 64" role="img" aria-labelledby="title">
+  <title id="title">Try JevPilot</title>
+  <defs>
+    <linearGradient id="red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f52c38"/>
+      <stop offset="1" stop-color="#dd1421"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="7" width="248" height="54" rx="14" fill="#99151e" opacity=".12"/>
+  <rect x="4" y="3" width="248" height="54" rx="14" fill="url(#red)" stroke="#cc1420"/>
+  <path d="M19 4h218a13 13 0 0 1 13 13" fill="none" stroke="#fff" stroke-opacity=".2"/>
+  <g transform="translate(23 18) scale(.16)" fill="#fff">
+    <path d="M44.06,0v44.08H0v105.92h105.93v-44.07h44.07V0H44.06ZM19.09,130.91c-16.47-16.47-5.29-54.45,24.96-85.18v60.2h60.23c-30.73,30.27-68.71,41.47-85.2,24.98ZM105.93,104.29v-60.21h-60.21C76.46,13.8,114.42,2.6,130.91,19.09c16.51,16.49,5.31,54.47-24.98,85.2Z"/>
+  </g>
+  <text x="62" y="36" fill="#fff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="600" letter-spacing="-.25">Try JevPilot</text>
+  <path d="M214 30h15m-6-6 6 6-6 6" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
