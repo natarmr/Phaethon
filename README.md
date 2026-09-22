@@ -1,6 +1,6 @@
 # Phaethon
 
-A Three.js driving simulator with a Jev-powered autopilot, plus a real-world
+Named after the chariot of the Greek God of light Apollo, Phaethon A Three.js driving simulator with a Jev-powered autopilot, plus a real-world
 OpenStreetMap district (SRM University, Andhra Pradesh).
 
 ## Run locally
