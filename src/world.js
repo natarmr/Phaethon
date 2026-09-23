@@ -1,6 +1,7 @@
 import { rng, choose, dist, heading, move, samplePolyline } from "./math.js";
 import { generateHighway, makeHighwayRoute } from "./highway.js";
 import osmData from "./osm-data.json" with { type: "json" };
+import srmData from "./srm-data.json" with { type: "json" };
 export const THEMES = {
   city: {
     name: "Skyline City",
@@ -34,9 +35,17 @@ export const THEMES = {
     buildings: 0,
     limit: 14,
   },
+  srm: {
+    name: "SRM Campus",
+    subtitle: "Showcase walk path.",
+    traffic: 0,
+    buildings: 0,
+    limit: 14,
+  },
 };
 export function generateWorld(seed, type = "town") {
   if (type === "highway") return generateHighway(seed, THEMES.highway);
+  if (type === "srm") return loadSrmWorld(seed);
   if (type === "osm") return loadOsmWorld(seed);
   const r = rng(seed),
     theme = THEMES[type],
@@ -321,6 +330,40 @@ export function loadOsmWorld(seed) {
   world.route = makeRoute(world, trip.ids);
   return world;
 }
+// Fixed showcase path (hand-picked campus walk; a future GPX trace swaps
+// the static data, not this function). The trip always runs start -> end;
+// the seed varies traffic and pedestrians downstream.
+export function loadSrmWorld(seed) {
+  const theme = THEMES.srm;
+  const nodes = srmData.nodes.map((n) => ({
+    ...n,
+    neighbors: [...n.neighbors],
+  }));
+  const edges = srmData.edges.map((e) => ({ ...e }));
+  const objects = (srmData.objects ?? []).map((o) => ({ ...o }));
+  const byId = Object.fromEntries(nodes.map((n) => [n.id, n]));
+  const ids = nodes.map((n) => n.id);
+  for (let i = 1; i < ids.length; i++)
+    if (!byId[ids[i - 1]].neighbors.includes(ids[i]))
+      throw new Error(`SRM path break between ${ids[i - 1]} and ${ids[i]}`);
+  const world = {
+    seed,
+    type: "srm",
+    theme,
+    nodes,
+    byId,
+    edges,
+    objects,
+    xs: srmData.xs,
+    zs: srmData.zs,
+    bounds: srmData.bounds,
+    startNode: ids[0],
+    nextNode: ids[1],
+    destination: ids.at(-1),
+  };
+  world.route = makeRoute(world, ids);
+  return world;
+}
 export function shortestPath(world, start, end, previousNode = null) {
   const cost = { [start]: 0 },
     prev = {},
@@ -372,21 +415,35 @@ export function makeRoute(world, ids, laneOffset) {
       hin = heading(nodes[Math.max(0, i - 1)], nodes[i === 0 ? 1 : i]),
       hout = i < nodes.length - 1 ? heading(p, nodes[i + 1]) : hin;
     if (i === 0) {
-      raw.push(move(offset(p, hout, legWidth(p, nodes[1])), hout, 14));
+      // The start lead-in must end before the first junction treatment
+      // begins; on short real-world opening legs the fixed 14 m would
+      // overshoot it and kink the route backwards. Long town legs unchanged.
+      const l0 = dist(p, nodes[1]);
+      const fin1 = Math.max(2, Math.min(11, l0 / 2 - 0.5));
+      const lead = Math.max(2, Math.min(14, l0 - fin1 - 2));
+      raw.push(move(offset(p, hout, legWidth(p, nodes[1])), hout, lead));
       continue;
     }
     if (i === nodes.length - 1) {
-      raw.push(move(offset(p, hin, legWidth(nodes[i - 1], p)), hin, -15));
+      const ln = dist(nodes[i - 1], p);
+      const foutPrev = Math.max(2, Math.min(11, ln / 2 - 0.5));
+      const tail = Math.max(2, Math.min(15, ln - foutPrev - 2));
+      raw.push(move(offset(p, hin, legWidth(nodes[i - 1], p)), hin, -tail));
       continue;
     }
     const win = legWidth(nodes[i - 1], p),
       wout = legWidth(p, nodes[i + 1]);
-    const a = move(offset(p, hin, win), hin, -11),
-      b = move(offset(p, hout, wout), hout, 11);
+    // Turn insets shrink on short real-world segments so consecutive
+    // junctions (closer than 11 + 11 m) never overlap and backtrack.
+    // Town/city legs are all >= 110 m, so their routes are unchanged.
+    const fin = Math.max(2, Math.min(11, dist(nodes[i - 1], p) / 2 - 0.5));
+    const fout = Math.max(2, Math.min(11, dist(p, nodes[i + 1]) / 2 - 0.5));
+    const a = move(offset(p, hin, win), hin, -fin),
+      b = move(offset(p, hout, wout), hout, fout);
     raw.push(a);
     if (Math.cos(hout - hin) < -0.99) {
       // Dead-end traffic makes a continuous turn into the opposite lane.
-      const center = move(p, hin, -11);
+      const center = move(p, hin, -fin);
       for (let k = 1; k <= 24; k++) {
         const theta = (k / 24) * Math.PI;
         raw.push(
@@ -432,11 +489,16 @@ export function makeRoute(world, ids, laneOffset) {
       approach: hin,
       exit: hout,
       width: win,
+      inset: fin,
     });
   }
   const points = samplePolyline(raw);
   for (const c of crossings) {
-    const target = move(offset(c, c.approach, c.width), c.approach, -10.5);
+    const target = move(
+      offset(c, c.approach, c.width),
+      c.approach,
+      -Math.min(10.5, c.inset ?? 10.5),
+    );
     let best = Infinity;
     for (const p of points) {
       const d = dist(p, target);

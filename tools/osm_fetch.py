@@ -94,8 +94,8 @@ out geom;"""
 
     def proj(lat, lon):
         return (
-            math.radians(lon - lon0) * EARTH_R * math.cos(lat0),
-            math.radians(lat - lat0) * EARTH_R,
+            (math.radians(lon) - lon0) * EARTH_R * math.cos(lat0),
+            (math.radians(lat) - lat0) * EARTH_R,
         )
 
     # Build vertex sequences per way, with drivable tags.

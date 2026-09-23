@@ -1,9 +1,9 @@
-// Browser smoke test for the OSM map (no Jev key needed).
-// Loads ?world=osm, asserts no page errors, car spawns on-road, manual
-// drive works, planner vectors render, screenshots to artifacts/.
-// Usage: BASE_URL=http://localhost:5173 node scripts/browser-osm.mjs
+// Browser smoke test for map sources (no Jev key needed).
+// Usage: WORLD=osm BASE_URL=http://localhost:5173 node scripts/browser-osm.mjs
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+
+const WORLD = process.env.WORLD || "osm";
 
 mkdirSync("artifacts", { recursive: true });
 const browser = await chromium.launch({ headless: true });
@@ -22,14 +22,16 @@ const MAIN = `
     .find((u) => u.includes("/src/main.js"))
 `;
 const url = new URL(
-  "/?world=osm&seed=7",
+  "/?world=" + WORLD + "&seed=7",
   process.env.BASE_URL || "http://localhost:5173",
 ).href;
 try {
   await page.goto(url);
   await page.locator("#minimap").waitFor({ timeout: 30000 });
   // Wait for the 3D scene to finish loading (loader overlay blocks clicks).
-  await page.locator("#scene-loader").waitFor({ state: "hidden", timeout: 90000 });
+  await page
+    .locator("#scene-loader")
+    .waitFor({ state: "hidden", timeout: 90000 });
   // Trigger a planner run first so sim.lastPlan exists (manual mode only
   // plans on demand for the candidate preview). DOM click, not a
   // Playwright actionability click: the app never navigates, but the
@@ -58,8 +60,9 @@ try {
     };
   }, MAIN);
   console.log("OSM WORLD", JSON.stringify(info, null, 1));
-  if (info.type !== "osm") throw new Error("world type is not osm");
-  if (info.dropdown !== "osm") throw new Error("dropdown did not select osm");
+  if (info.type !== WORLD) throw new Error("world type is not " + WORLD);
+  if (info.dropdown !== WORLD)
+    throw new Error("dropdown did not select " + WORLD);
   if (info.onRoad !== true) throw new Error("player spawn is off-road");
   // Manual drive: W for 2s should move the car and raise speed above 0.
   // (DOM events, not Playwright clicks: something in the dev-HMR page
@@ -84,11 +87,11 @@ try {
   }, MAIN);
   console.log("candidate meshes:", vectors);
   if (!(vectors > 0)) throw new Error("no candidate vectors rendered");
-  await page.screenshot({ path: "artifacts/osm.png" });
+  await page.screenshot({ path: `artifacts/${WORLD}.png` });
   // Switch worlds and back to prove the picker round-trips.
   await page.locator("#world-select").selectOption("town");
   await page.waitForTimeout(2000);
-  await page.locator("#world-select").selectOption("osm");
+  await page.locator("#world-select").selectOption(WORLD);
   await page.waitForTimeout(2000);
   const back = await page.evaluate(async (mainExpr) => {
     // eslint-disable-next-line no-eval
@@ -96,7 +99,8 @@ try {
     const { sim } = await import(src);
     return sim.world.type;
   }, MAIN);
-  if (back !== "osm") throw new Error("world picker did not return to osm");
+  if (back !== WORLD)
+    throw new Error("world picker did not return to " + WORLD);
   if (errors.length) throw new Error("page errors:\n" + errors.join("\n"));
   console.log("PASS: OSM map loads, spawns on-road, drives, renders.");
 } finally {

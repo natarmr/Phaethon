@@ -21,7 +21,9 @@ while (
   cost += decision.cost_usd;
   inputTokens += decision.usage.input_tokens;
   maxSpeed = Math.max(maxSpeed, sim.player.speed);
-  sim.player.maneuver = state.vectors[decision.answers.vector.choice];
+  // selection.choice is always populated (motion-only answers have no
+  // answers.vector); controls carry the validated steering/velocity.
+  sim.player.maneuver = state.vectors[decision.selection.choice];
   sim.player.steering = decision.controls.steering;
   sim.player.target = decision.controls.velocity;
   for (let i = 0; i < 6; i++) sim.step(0.05);
@@ -33,10 +35,7 @@ while (
         remaining: sim.navigation().remaining_m,
         offset: sim.navigation().route_offset_m,
         speed: sim.player.speed,
-        choice: [
-          decision.answers.vector.choice,
-          decision.controls.velocity,
-        ],
+        choice: [decision.answers.vector.choice, decision.controls.velocity],
         control: sim.rule(sim.player),
         safety: sim.brakeReason,
         collisions: sim.collisions,

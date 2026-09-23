@@ -43,7 +43,7 @@ export { physics } from "./planning.js";
 import { createDrivingPlan, recoveryBlocked } from "./driving-plan.js";
 import { updateCourtesy } from "./courtesy.js";
 import { routeFromLocation, routesFromLocation } from "./routing.js";
-import { localRoads, roadOccupancy } from "./road-geometry.js";
+import { localRoads, roadOccupancy, distanceToRoad } from "./road-geometry.js";
 
 const REROUTE_DISTANCE_M = 30;
 const REROUTE_DELAY_S = 6;
@@ -116,7 +116,10 @@ export class Simulation {
     this.pedestrians = [];
     for (
       let i = 0;
-      i < (type === "highway" ? 0 : 14 + (type === "city" ? 12 : 0));
+      i <
+      (type === "highway"
+        ? 0
+        : (type === "srm" ? 24 : 14) + (type === "city" ? 12 : 0));
       i++
     ) {
       const node = choose(this.r, this.world.nodes),
@@ -124,16 +127,50 @@ export class Simulation {
       const other = this.world.byId[choose(this.r, node.neighbors)];
       const walkHeading = heading(node, other),
         side = this.r() < 0.5 ? -1 : 1;
-      const pathStart = move(
-        move(node, walkHeading, 14),
-        walkHeading + Math.PI / 2,
-        7.05 * side,
-      );
-      const pathLength = dist(node, other) - 28;
+      // Sidewalk paths assume long straight legs (>=110 m on town/city).
+      // On short dense real-world segments the fixed 14 m start overshoots
+      // past the next junction, dist - 28 goes negative (pedestrians jitter
+      // in place), and a 7 m offset can land on a neighboring road — a
+      // pedestrian frozen on the asphalt stalls autopilot forever.
+      const legLen = dist(node, other);
+      const along = Math.min(14, Math.max(4, legLen - 4));
+      const pathLength = Math.max(0, dist(node, other) - 28);
+      // Search both sides of the leg for a walk segment that stays clear
+      // of the asphalt. Town starts are already clear, so the first
+      // candidate wins there and nothing changes.
+      const base = move(node, walkHeading, along);
+      let startProbe = null;
+      let bestClear = -Infinity;
+      for (const dir of [side, -side]) {
+        for (let k = 0; k < 9; k++) {
+          const cand = move(base, walkHeading + Math.PI / 2, dir * (7.05 + k));
+          const end = move(cand, walkHeading, pathLength);
+          const mid = move(cand, walkHeading, pathLength / 2);
+          const clear = Math.min(
+            ...[cand, mid, end].map((pt) =>
+              distanceToRoad(
+                { ...pt, heading: 0, width: 0.6, depth: 0.6 },
+                localRoads(this.world, {
+                  ...pt,
+                  heading: 0,
+                  width: 0.6,
+                  depth: 0.6,
+                }),
+              ),
+            ),
+          );
+          if (clear > bestClear) {
+            bestClear = clear;
+            startProbe = { x: cand.x, z: cand.z };
+          }
+          if (bestClear >= 1.2) break;
+        }
+        if (bestClear >= 1.2) break;
+      }
       const progress = crossing ? 0 : this.r() * pathLength;
       const position = crossing
         ? { x: node.x - 8, z: node.z - 7.8 }
-        : move(pathStart, walkHeading, progress);
+        : move(startProbe, walkHeading, progress);
       this.pedestrians.push({
         id: `pedestrian-${i}`,
         type: "pedestrian",
@@ -142,7 +179,7 @@ export class Simulation {
         z: position.z,
         progress,
         walkPath: {
-          start: pathStart,
+          start: { x: startProbe.x, z: startProbe.z },
           heading: walkHeading,
           length: pathLength,
         },
@@ -154,6 +191,25 @@ export class Simulation {
         depth: 0.6,
         height: 1.7,
       });
+    }
+    // The srm showcase guarantees a crossing moment: if no spawned
+    // pedestrian landed on a signal node, relocate the first candidate.
+    if (
+      type === "srm" &&
+      !this.pedestrians.some((p) => p.crossing) &&
+      this.pedestrians.length
+    ) {
+      const sig = this.world.nodes.find((n) => n.control === "signal");
+      const cand =
+        this.pedestrians.find((_, i) => i % 3 === 0) ?? this.pedestrians[0];
+      if (sig && cand) {
+        cand.crossing = true;
+        cand.nodeId = sig.id;
+        cand.progress = 0;
+        cand.direction = 1;
+        cand.x = sig.x - 8;
+        cand.z = sig.z - 7.8;
+      }
     }
   }
   spawnTraffic(i, distant = false) {
@@ -514,8 +570,12 @@ export class Simulation {
         walk = signalState(node, this.time, 0).walk;
       if (p.crossing) {
         if (walk && !p.walking && p.progress === 0) {
+          // Only moving cars hold a pedestrian at the curb. A stopped car
+          // is yielding (or parked): the pedestrian crosses in front of it
+          // and clears it, so a wait-for-pedestrian stalemate always
+          // resolves instead of deadlocking.
           const anyCar = [this.player, ...this.traffic].some(
-            (v) => dist(v, node) < 13,
+            (v) => dist(v, node) < 13 && Math.abs(v.speed) > 0.5,
           );
           if (!anyCar) p.walking = true;
         }

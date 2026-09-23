@@ -18,8 +18,10 @@ Open http://localhost:5173. Local dev skips login — Jev calls use your own key
 
 ## Maps
 
-Skyline City, Small town, Interstate 08 (procedural), and SRM University
-(real streets from OpenStreetMap, bundled in `src/osm-data.json`).
+Skyline City, Small town, Interstate 08 (procedural), SRM University
+(real streets from OpenStreetMap, bundled in `src/osm-data.json`), and
+SRM Campus (a fixed showcase path with pedestrian crossings, built by
+`node scripts/build-srm.mjs` into `src/srm-data.json`).
 
 Regenerate the OSM data:
 
